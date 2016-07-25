@@ -1,8 +1,12 @@
 package org.smart4j.chapter2.helper;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.sql.Connection;
 
 import org.apache.commons.collections4.iterators.ObjectArrayIterator;
+import org.apache.commons.dbcp2.BasicDataSource;
 import org.apache.commons.dbutils.QueryRunner;
 import org.apache.commons.dbutils.handlers.BeanHandler;
 import org.apache.commons.dbutils.handlers.BeanListHandler;
@@ -29,32 +33,47 @@ public final class DatabaseHelper {
     private static final String URL;
     private static final String USERNAME;
     private static final String PASSWORD;
-    private static final QueryRunner QUERY_RUNNER=new QueryRunner();
-    private static final ThreadLocal<Connection> CONNECTION_THREAD_LOCAL=new ThreadLocal<Connection>();
+
+    private static final QueryRunner QUERY_RUNNER;
+    //private static final ThreadLocal<Connection> CONNECTION_THREAD_LOCAL=new ThreadLocal<Connection>();
+    private static final ThreadLocal<Connection> CONNECTION_HOLDER;
+    private static final BasicDataSource DATA_SOURCE;
+
     static {
+        CONNECTION_HOLDER=new ThreadLocal<Connection>();
+        QUERY_RUNNER=new QueryRunner();
+
         Properties conf= PropsUtil.loadProps("config.properties");
         DRIVER=conf.getProperty("jdbc.driver");
         URL =conf.getProperty("jdbc.url");
         USERNAME=conf.getProperty("jdbc.username");
         PASSWORD=conf.getProperty("jdbc.password");
 
+        DATA_SOURCE=new BasicDataSource();
+        DATA_SOURCE.setDriverClassName(DRIVER);
+        DATA_SOURCE.setUrl(URL);
+        DATA_SOURCE.setUsername(USERNAME);
+        DATA_SOURCE.setPassword(PASSWORD);
+
+/*
         try{
             Class.forName(DRIVER);
         }catch(ClassNotFoundException e){
             LOGGER.error("can not load jdbc driver",e);
         }
+        */
     }
     //获取数据库连接
     public static Connection getConnection(){
-        Connection conn=CONNECTION_THREAD_LOCAL.get();
+        Connection conn=CONNECTION_HOLDER.get();
         if(conn==null){
             try{
-                conn= DriverManager.getConnection(URL,USERNAME,PASSWORD);;
+                conn= DATA_SOURCE.getConnection();
             }catch (SQLException e){
                 LOGGER.error("get connection failure",e);
                 throw new RuntimeException(e);
             }finally {
-                CONNECTION_THREAD_LOCAL.set(conn);
+                CONNECTION_HOLDER.set(conn);
             }
         }
         /*
@@ -68,9 +87,9 @@ public final class DatabaseHelper {
         return conn;
     }
 
-    //关闭数据库连接
+    //关闭数据库连接(使用连接池的话就不用了)
     public static void closeConnection(){
-        Connection conn=CONNECTION_THREAD_LOCAL.get();
+        Connection conn=CONNECTION_HOLDER.get();
         if(conn!=null){
             try{
                 conn.close();
@@ -78,7 +97,7 @@ public final class DatabaseHelper {
                 LOGGER.error("close connection failure",e);
                 throw new RuntimeException(e);
             }finally {
-                CONNECTION_THREAD_LOCAL.remove();
+                CONNECTION_HOLDER.remove();
             }
         }
     }
@@ -103,7 +122,7 @@ public final class DatabaseHelper {
             LOGGER.error("query entity list failure",e);
             throw new RuntimeException(e);
         }finally {
-            closeConnection();
+           // closeConnection();
         }
         return  entityList;
     }
@@ -130,7 +149,7 @@ public final class DatabaseHelper {
             LOGGER.error("query entity failure",e);
             throw new RuntimeException(e);
         }finally {
-            closeConnection();
+            //closeConnection();
         }
         return entity;
     }
@@ -159,7 +178,19 @@ public final class DatabaseHelper {
         }catch (SQLException e){
             LOGGER.error("execute update failure",e);
         }finally {
-            closeConnection();
+            //closeConnection();
+        }
+        return rows;
+    }
+    public static int executeUpdate(String sql){
+        int rows=0;  //返回受影响的行数
+        try{
+            Connection conn=getConnection();
+            rows=QUERY_RUNNER.update(conn,sql);
+        }catch (SQLException e){
+            LOGGER.error("execute update failure",e);
+        }finally {
+            //closeConnection();
         }
         return rows;
     }
@@ -216,6 +247,23 @@ public final class DatabaseHelper {
 
     private static String getTableName(Class<?> entityClass){
         return entityClass.getSimpleName();
+    }
+    /**
+     * 执行SQL文件
+     */
+    public static void executeSqlFile(String filePath){
+
+        InputStream is=Thread.currentThread().getContextClassLoader().getResourceAsStream(filePath);
+        BufferedReader reader =new BufferedReader(new InputStreamReader(is));
+        try{
+            String sql;
+            while ((sql=reader.readLine())!=null){
+                executeUpdate(sql);
+            }
+        }catch (Exception e){
+            LOGGER.error("execute sql file failure",e);
+            throw new RuntimeException(e);
+        }
     }
 
 }

@@ -81,6 +81,7 @@ public class CustomerService {
 
     //获取客户
     public Customer getCustomer(long id){
+        return DatabaseHelper.queryEntityList(Customer.class,id);
         return null;
     }
 
