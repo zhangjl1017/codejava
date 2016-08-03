@@ -27,7 +27,12 @@ public class UserRestController {
     }
     @RequestMapping(value = "/users/{id}",method = RequestMethod.GET)
     public User get(@PathVariable("id") int id){
-        return userRepository.find(id);
+        User user=userRepository.find(id);
+        if(user==null){
+            //return "User not found!"+" User with id: "+id+" not found in the system.";
+            throw new RestException(1,"User not found!","User with id: "+id+" not found in the system.");
+        }
+        return user;
     }
     @RequestMapping(value = "/users/{id}",method = RequestMethod.PUT)
     public void update(@PathVariable("id") int id,@RequestBody User user){
